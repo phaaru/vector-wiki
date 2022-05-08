@@ -1,9 +1,9 @@
 # from uuid import UUID
-import re
+
 from fastapi import FastAPI, Depends, HTTPException
 import models
 from database import SessionLocal, engine, Base
-from sqlalchemy.orm import Session
+# from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import func
 from sqlalchemy.future import select
@@ -36,7 +36,6 @@ async def get_all_continents(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(models.Continent))
     return result.scalars().all()
 
-
 @app.get("/continent/{continent_id}")
 async def get_continent_by_id(continent_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(models.Continent).where(models.Continent.id == continent_id))
@@ -45,7 +44,6 @@ async def get_continent_by_id(continent_id: int, db: AsyncSession = Depends(get_
     if continent_model is not None:
         return continent_model
     raise http_exception(404, "Item not found")
-
 
 @app.post("/continent")
 async def create_continent(continent: Continent, db: AsyncSession = Depends(get_db)):
@@ -59,9 +57,8 @@ async def create_continent(continent: Continent, db: AsyncSession = Depends(get_
 
     return succesful_response(201)
 
-
 @app.put("/continent/{continent_id}")
-async def update_continent(continent_id: int, continent: Continent, db: Session = Depends(get_db)):
+async def update_continent(continent_id: int, continent: Continent, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(models.Continent).where(models.Continent.id == continent_id))
     continent_model = result.scalar_one_or_none()    
     if continent_model is None:
@@ -88,8 +85,6 @@ async def delete_continent(continent_id: int, db: AsyncSession = Depends(get_db)
     db.commit()
 
     return succesful_response(200)
-
-
 
 
 #Country CRUD

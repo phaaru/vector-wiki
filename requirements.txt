@@ -1,5 +1,4 @@
-fastapi
-uvicorn
-sqlalchemy
-databases
-aiosqlite
+fastapi==0.75.2
+uvicorn==0.17.6
+sqlalchemy==1.4.36
+aiosqlite==0.17.0
