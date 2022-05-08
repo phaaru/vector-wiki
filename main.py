@@ -1,23 +1,29 @@
 # from uuid import UUID
+import re
 from fastapi import FastAPI, Depends, HTTPException
 import models
-from database import engine, SessionLocal
+from database import SessionLocal, engine, Base
 from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import func
+from sqlalchemy.future import select
 from pydantic import BaseModel, validator
 
 app = FastAPI()
 
-models.Base.metadata.create_all(bind=engine)
+# models.Base.metadata.create_all(bind=engine)
 
-def get_db():
-    try:
-        db = SessionLocal()
-        yield db
-    finally:
-        db.close()
+async def get_db() -> AsyncSession:
+    async with SessionLocal() as session:
+        yield session
+        await session.commit()
 
-
+@app.on_event("startup")
+async def startup():
+    # create db tables
+    async with engine.begin() as conn:
+        # await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
 
 #Continent CRUD
 class Continent(BaseModel):
@@ -26,13 +32,15 @@ class Continent(BaseModel):
     area_in_sqm: int 
 
 @app.get("/continent")
-async def get_all_continents(db: Session = Depends(get_db)):
-    return db.query(models.Continent).all()
+async def get_all_continents(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(models.Continent))
+    return result.scalars().all()
 
 
 @app.get("/continent/{continent_id}")
-async def get_continent_by_id(continent_id: int, db: Session = Depends(get_db)):
-    continent_model = db.query(models.Continent).filter(models.Continent.id == continent_id).first()
+async def get_continent_by_id(continent_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(models.Continent).where(models.Continent.id == continent_id))
+    continent_model = result.scalar_one_or_none()
 
     if continent_model is not None:
         return continent_model
@@ -40,21 +48,22 @@ async def get_continent_by_id(continent_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/continent")
-async def create_continent(continent: Continent, db: Session = Depends(get_db)):
+async def create_continent(continent: Continent, db: AsyncSession = Depends(get_db)):
     continent_model = models.Continent()
     continent_model.name = continent.name.capitalize()
     continent_model.population = continent.population
     continent_model.area_in_sqm = continent.area_in_sqm
 
     db.add(continent_model)
-    db.commit()
+    await db.commit()
 
     return succesful_response(201)
 
+
 @app.put("/continent/{continent_id}")
 async def update_continent(continent_id: int, continent: Continent, db: Session = Depends(get_db)):
-    continent_model = db.query(models.Continent).filter(models.Continent.id == continent_id).first()
-    
+    result = await db.execute(select(models.Continent).where(models.Continent.id == continent_id))
+    continent_model = result.scalar_one_or_none()    
     if continent_model is None:
         raise http_exception(404, "Item not found")
     
@@ -63,18 +72,18 @@ async def update_continent(continent_id: int, continent: Continent, db: Session 
     continent_model.area_in_sqm = continent.area_in_sqm
 
     db.add(continent_model)
-    db.commit()
+    await db.commit()
 
     return succesful_response(200)
 
 @app.delete("/continent/{continent_id}")
-async def delete_continent(continent_id: int, db: Session = Depends(get_db)):
-    continent_model = db.query(models.Continent).filter(models.Continent.id == continent_id).first()
-    
+async def delete_continent(continent_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(models.Continent).where(models.Continent.id == continent_id))
+    continent_model = result.scalar_one_or_none()    
     if continent_model is None:
         raise http_exception(404, "Item not found")
     
-    db.query(models.Continent).filter(models.Continent.id == continent_id).delete()
+    await db.delete(continent_model)
 
     db.commit()
 
@@ -94,63 +103,75 @@ class Country(BaseModel):
     continent: str
 
 @app.get("/country")
-async def get_all_countries(db: Session = Depends(get_db)):
-    return db.query(models.Country).all()
+async def get_all_countries(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(models.Country))
+    return result.scalars().all()
 
 @app.get("/country/{country_id}")
-async def get_country_by_id(country_id: int, db: Session = Depends(get_db)):
-    country_model = db.query(models.Country).filter(models.Country.id == country_id).first()
+async def get_country_by_id(country_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(models.Country).where(models.Country.id == country_id))
+    country_model = result.scalar_one_or_none()
 
     if country_model is not None:
         return country_model
     raise http_exception(404, "Item not found")
 
 @app.post("/country")
-async def create_country(country: Country, db: Session = Depends(get_db)):
+async def create_country(country: Country, db: AsyncSession = Depends(get_db)):
     country_model = models.Country()
-    # await db.connection()
-    continent = db.query(models.Continent).filter_by(name=country.continent.capitalize()).first()
+    result = await db.execute(select(models.Continent).where(models.Continent.name == country.continent.capitalize()))
+    continent = result.scalar_one_or_none()
+    if continent is None:
+        raise http_exception(400, "Continent does not exist")
+    
+    # print(continent.population, continent.area_in_sqm, type(continent.population))
 
-    continent_population = continent.population
-    print(continent.population, continent.area_in_sqm, type(continent.population), continent_population)
-
-
-      # calculate sum
-    sum_country = db.query(func.sum(models.Country.area_in_sqm), func.sum(models.Country.population)).filter(models.Country.continent_id == continent.id).all()
-    sum_country_area = sum_country[0][0]
-    sum_country_population = sum_country[0][1]
+    # calculate sum
+    q1 = await db.execute(select(func.sum(models.Country.area_in_sqm)).where(models.Country.continent_id == continent.id))
+    sum_country_area= q1.scalar_one_or_none()
+    q2 = await db.execute(select(func.sum(models.Country.population)).where(models.Country.continent_id == continent.id))
+    sum_country_population = q2.scalar_one_or_none()
+    if sum_country_population is None:
+        sum_country_population = 0
+    if sum_country_area is None:    
+        sum_country_area = 0
 
     country_model.name = country.name.capitalize()
-    # if country.population > continent_population - sum_country_population:
-    #     raise http_exception(400, "Bad Population Input")
+    
+    if country.population > continent.population - sum_country_population:
+        raise http_exception(400, "Bad Population Input")
     country_model.population = country.population
-    # if country.area_in_sqm > continent.area_in_sqm - sum_country_area:
-    #     raise http_exception(400, "Bad Area Input")
+    if country.area_in_sqm > continent.area_in_sqm - sum_country_area:
+        raise http_exception(400, "Bad Area Input")
     country_model.area_in_sqm = country.area_in_sqm
     country_model.quantity_hospitals = country.quantity_hospitals
     country_model.quantity_national_parks = country.quantity_national_parks
     country_model.continent = continent
 
-    # print(sum_country_area, continent.area_in_sqm, sum_country_area[0][0], sum_country_area[0][1])
     # Null continent_id is added if continent does not exist. Assuming continents would be added first.
 
     db.add(country_model)
-    db.commit()
+    await db.commit()
 
     return succesful_response(201)
 
 @app.put("/country/{country_id}")
-async def update_country(country_id: int, country: Country, db: Session = Depends(get_db)):
-    country_model = db.query(models.Country).filter(models.Country.id == country_id).first()
+async def update_country(country_id: int, country: Country, db: AsyncSession = Depends(get_db)):
+    result1 = await db.execute(select(models.Country).where(models.Country.id == country_id))
+    country_model = result1.scalar_one_or_none()    
     if country_model is None:
         raise http_exception()
     
-    continent = db.query(models.Continent).filter_by(name=country.continent.capitalize()).first()
+    result2 = await db.execute(select(models.Continent).where(models.Continent.name == country.continent.capitalize()))
+    continent = result2.scalar_one_or_none()
+    if continent is None:
+        raise http_exception(400, "Continent does not exist")
 
       # calculate sum
-    sum_country = db.query(func.sum(models.Country.area_in_sqm), func.sum(models.Country.population)).filter(models.Country.continent_id == continent.id).all()
-    sum_country_area = sum_country[0][0]
-    sum_country_population = sum_country[0][1]
+    q1 = await db.execute(select(func.sum(models.Country.area_in_sqm)).where(models.Country.continent_id == continent.id))
+    sum_country_area= q1.scalar_one_or_none()
+    q2 = await db.execute(select(func.sum(models.Country.population)).where(models.Country.continent_id == continent.id))
+    sum_country_population = q2.scalar_one_or_none()
 
     country_model.name = country.name.capitalize()
     #Since this is update, there already exists a population and area.
@@ -165,23 +186,21 @@ async def update_country(country_id: int, country: Country, db: Session = Depend
     country_model.continent = continent
 
     db.add(country_model)
-    db.commit()
+    await db.commit()
 
     return succesful_response(200)
 
 @app.delete("/country/{country_id}")
-async def delete_country(country_id: int, db: Session = Depends(get_db)):
-    country_model = db.query(models.Country).filter(models.Country.id == country_id).first()
-    
+async def delete_country(country_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(models.Country).where(models.Country.id == country_id))
+    country_model = result.scalar_one_or_none() 
     if country_model is None:
-        raise http_exception()
+        raise http_exception(404, "Item not found")
     
-    db.query(models.Country).filter(models.Country.id == country_id).delete()
+    await db.delete(country_model)
     db.commit()
 
     return succesful_response(200)
-
-
 
 
 # City CRUD
@@ -195,40 +214,92 @@ class City(BaseModel):
     country: str
 
 @app.get("/city")
-async def get_all_cities(db: Session = Depends(get_db)):
-    return db.query(models.City).all()
-
+async def get_all_cities(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(models.City))
+    return result.scalars().all()
 
 @app.post("/city")
-async def create_city(city: City, db: Session = Depends(get_db)):
+async def create_city(city: City, db: AsyncSession = Depends(get_db)):
     city_model = models.City()
-    country = db.query(models.Country).filter_by(name=city.country.capitalize()).first()
 
-      # calculate sum
-    sum_city = db.query(func.sum(models.City.area_in_sqm), func.sum(models.City.population)).filter(models.City.country_id == country.id).all()
-    sum_city_area = sum_city[0][0]
-    sum_city_population = sum_city[0][1]
+    result = await db.execute(select(models.Country).where(models.Country.name == city.country.capitalize()))
+    country = result.scalar_one_or_none()
+    if country is None:
+        raise http_exception(400, "Country does not exist")
 
-    print(sum_city, sum_city[0][0], sum_city[0][1])
-
-
+    # calculate sum
+    q1 = await db.execute(select(func.sum(models.City.area_in_sqm)).where(models.City.country_id == country.id))
+    sum_city_area= q1.scalar_one_or_none()
+    q2 = await db.execute(select(func.sum(models.City.population)).where(models.City.country_id == country.id))
+    sum_city_population = q2.scalar_one_or_none()
+    if sum_city_population is None:
+        sum_city_population = 0
+    if sum_city_area is None:
+        sum_city_area = 0
 
     city_model.name = city.name
-    # if city.population > country.population - sum_city_population:
-    #     raise http_exception(400, "Bad Population Input")
+    if city.population > country.population - sum_city_population:
+        raise http_exception(400, "Bad Population Input")
     city_model.population = city.population
-    # if city.area_in_sqm > country.area_in_sqm - sum_city_area:
-    #     raise http_exception(400, "Bad Area Input")
+    if city.area_in_sqm > country.area_in_sqm - sum_city_area:
+        raise http_exception(400, "Bad Area Input")
     city_model.area_in_sqm = city.area_in_sqm
     city_model.quantity_trees = city.quantity_trees
     city_model.quantity_roads = city.quantity_roads
-    city_model.continent = country
-
+    city_model.country = country
 
     db.add(city_model)
-    db.commit()
+    await db.commit()
 
     return succesful_response(201)
+
+@app.put("/city/{city_id}")
+async def update_city(city_id: int, city: City, db: AsyncSession = Depends(get_db)):
+    result1 = await db.execute(select(models.City).where(models.City.id == city_id))
+    city_model = result1.scalar_one_or_none()    
+    if city_model is None:
+        raise http_exception()
+    
+    result2 = await db.execute(select(models.Country).where(models.Country.name == city.country.capitalize()))
+    country = result2.scalar_one_or_none()
+    if country is None:
+        raise http_exception(400, "Country does not exist")
+
+      # calculate sum
+    q1 = await db.execute(select(func.sum(models.City.area_in_sqm)).where(models.City.country_id == country.id))
+    sum_city_area= q1.scalar_one_or_none()
+    q2 = await db.execute(select(func.sum(models.City.population)).where(models.City.country_id == country.id))
+    sum_city_population = q2.scalar_one_or_none()
+
+    city_model.name = city.name.capitalize()
+    #Since this is update, there already exists a population and area.
+    if city.population > country.population - (sum_city_population - city_model.population):
+        raise http_exception(400, "Bad Population Input")
+    city_model.population = city.population
+    if city.area_in_sqm > country.area_in_sqm - (sum_city_area - city_model.area_in_sqm):
+        raise http_exception(400, "Bad Area Input")
+    city_model.area_in_sqm = city.area_in_sqm
+    city_model.quantity_trees = city.quantity_trees
+    city_model.quantity_roads = city.quantity_roads
+    city_model.country = country
+
+    db.add(city_model)
+    await db.commit()
+
+    return succesful_response(200)
+
+@app.delete("/city/{city_id}")
+async def delete_city(city_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(models.City).where(models.City.id == city_id))
+    city_model = result.scalar_one_or_none() 
+    if city_model is None:
+        raise http_exception(404, "Item not found")
+    
+    await db.delete(city_model)
+    db.commit()
+
+    return succesful_response(200)
+
 
 def succesful_response(status_code: int):
     return {
