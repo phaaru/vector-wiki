@@ -1,4 +1,3 @@
-from fastapi import HTTPException
 from sqlalchemy.future import select
 from sqlalchemy.sql import func
 
@@ -31,7 +30,7 @@ async def update_continent(continent_id, name, population, area_in_sqm):
     continent_model = result.scalar_one_or_none()    
     if continent_model is None:
         ############## Handle this
-        raise HTTPException(404, "Item not found")
+        return "404 - Continent not found"
     
     continent_model.name = name
     continent_model.population = population
@@ -46,7 +45,7 @@ async def delete_continent(continent_id):
     result = await db.execute(select(models.Continent).where(models.Continent.id == continent_id))
     continent_model = result.scalar_one_or_none()    
     if continent_model is None:
-        raise HTTPException(404, "Item not found")
+        return "404 - Continent not found"
     
     await db.delete(continent_model)
 
@@ -62,7 +61,7 @@ async def create_country(name, population, area_in_sqm, quantity_hospitals, quan
     result = await db.execute(select(models.Continent).where(models.Continent.name == continent_name))
     continent = result.scalar_one_or_none()
     if continent is None:
-        raise HTTPException(400, "Continent does not exist")
+        return "Continent does not exist"
 
     # print(continent.population, continent.area_in_sqm, type(continent.population))
 
@@ -79,10 +78,10 @@ async def create_country(name, population, area_in_sqm, quantity_hospitals, quan
     country_model.name = name
     
     if population > continent.population - sum_country_population:
-        raise HTTPException(400, "Bad Population Input")
+        return "Population input is wrong"
     country_model.population = population
     if area_in_sqm > continent.area_in_sqm - sum_country_area:
-        raise HTTPException(400, "Bad Area Input")
+        return "Area input is wrong"
     country_model.area_in_sqm = area_in_sqm
     country_model.quantity_hospitals = quantity_hospitals
     country_model.quantity_national_parks = quantity_national_parks
@@ -99,12 +98,12 @@ async def update_country(country_id, name, population, area_in_sqm, quantity_hos
     result1 = await db.execute(select(models.Country).where(models.Country.id == country_id))
     country_model = result1.scalar_one_or_none()    
     if country_model is None:
-        raise HTTPException(400, "Country does not exist")
+        return "Country does not exist"
     
     result2 = await db.execute(select(models.Continent).where(models.Continent.name == continent_name))
     continent = result2.scalar_one_or_none()
     if continent is None:
-        raise HTTPException(400, "Continent does not exist")
+        return "Continent does not exist"
 
       # calculate sum
     q1 = await db.execute(select(func.sum(models.Country.area_in_sqm)).where(models.Country.continent_id == continent.id))
@@ -119,10 +118,10 @@ async def update_country(country_id, name, population, area_in_sqm, quantity_hos
 
     country_model.name = name
     if population > continent.population - (sum_country_population - country_model.population):
-        raise HTTPException(400, "Bad Population Input")
+        return "Population input is wrong"
     country_model.population = population
     if area_in_sqm > continent.area_in_sqm - (sum_country_area - country_model.area_in_sqm):
-        raise HTTPException(400, "Bad Area Input")
+        return "Area input is wrong"
     country_model.area_in_sqm = area_in_sqm
     country_model.quantity_hospitals = quantity_hospitals
     country_model.quantity_national_parks = quantity_national_parks
@@ -137,7 +136,7 @@ async def delete_country(country_id):
     result = await db.execute(select(models.Country).where(models.Country.id == country_id))
     country_model = result.scalar_one_or_none() 
     if country_model is None:
-        raise HTTPException(404, "Item not found")
+        return "Country not found"
     
     await db.delete(country_model)
     db.commit()
@@ -153,7 +152,7 @@ async def create_city(name, population, area_in_sqm, quantity_trees, quantity_ro
     result = await db.execute(select(models.Country).where(models.Country.name == country_name))
     country = result.scalar_one_or_none()
     if country is None:
-        raise HTTPException(400, "Country does not exist")
+        return "Country does not exist"
 
     # calculate sum
     q1 = await db.execute(select(func.sum(models.City.area_in_sqm)).where(models.City.country_id == country.id))
@@ -167,10 +166,10 @@ async def create_city(name, population, area_in_sqm, quantity_trees, quantity_ro
 
     city_model.name = name
     if population > country.population - sum_city_population:
-        raise HTTPException(400, "Bad Population Input")
+        return "Population input is wrong"
     city_model.population = population
     if area_in_sqm > country.area_in_sqm - sum_city_area:
-        raise HTTPException(400, "Bad Area Input")
+        return "Area input is wrong"
     city_model.area_in_sqm = area_in_sqm
     city_model.quantity_trees = quantity_trees
     city_model.quantity_roads = quantity_roads
@@ -185,12 +184,12 @@ async def update_city(city_id, name, population, area_in_sqm, quantity_trees, qu
     result1 = await db.execute(select(models.City).where(models.City.id == city_id))
     city_model = result1.scalar_one_or_none()    
     if city_model is None:
-        raise HTTPException(400, "City does not exist")
+        return"City does not exist"
     
     result2 = await db.execute(select(models.Country).where(models.Country.name == country_name))
     country = result2.scalar_one_or_none()
     if country is None:
-        raise HTTPException(400, "Country does not exist")
+        return "Country does not exist"
 
       # calculate sum
     q1 = await db.execute(select(func.sum(models.City.area_in_sqm)).where(models.City.country_id == country.id))
@@ -205,10 +204,10 @@ async def update_city(city_id, name, population, area_in_sqm, quantity_trees, qu
 
     city_model.name = name
     if population > country.population - (sum_city_population - city_model.population):
-        raise HTTPException(400, "Bad Population Input")
+        return "Population input is wrong"
     city_model.population = population
     if area_in_sqm > country.area_in_sqm - (sum_city_area - city_model.area_in_sqm):
-        raise HTTPException(400, "Bad Area Input")
+        return "Area input is wrong"
     city_model.area_in_sqm = area_in_sqm
     city_model.quantity_trees = quantity_trees
     city_model.quantity_roads = quantity_roads
@@ -223,8 +222,8 @@ async def delete_city(city_id):
     result = await db.execute(select(models.City).where(models.City.id == city_id))
     city_model = result.scalar_one_or_none() 
     if city_model is None:
-        raise HTTPException(404, "Item not found")
-    
+        return "City not found"
+
     await db.delete(city_model)
     db.commit()
 

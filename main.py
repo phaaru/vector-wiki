@@ -1,13 +1,13 @@
 # from uuid import UUID
 
 from fastapi import FastAPI, Depends
-import models
-from database import SessionLocal, engine, Base
-# from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from pydantic import BaseModel, Field
+
 import celery_worker
+import models
+from database import SessionLocal, engine, Base
 
 app = FastAPI()
 
