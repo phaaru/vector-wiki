@@ -7,7 +7,7 @@ import db_crud
 
 
 # Initialize Celery
-celery = Celery('tasks', broker = 'amqp://guest:guest@127.0.0.1:5672//')
+celery = Celery('tasks', broker = 'amqp://guest:guest@rabbitmq-server:5672//')
 
 # Create logger - display messages on task logger
 celery_log = get_task_logger(__name__)

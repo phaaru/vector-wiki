@@ -1,0 +1,29 @@
+version: "3.10"
+
+services:
+
+  fastapi-app:
+    container_name: app
+    build: .
+    command: bash -c "uvicorn main:app --host 0.0.0.0 --port 8000"
+    volumes:
+      - .:/app
+    ports:
+      - 8000:8000
+    restart: always
+
+  rabbitmq-server:
+    container_name: rabbitmq
+    image: rabbitmq:3
+    ports:
+      - 5672:5672
+  
+  celery_worker:
+    container_name: celery_worker
+    build: .
+    command: celery -A celery_worker.celery worker --loglevel=info
+    volumes:
+      - .:/app
+    depends_on:
+      - fastapi-app
+      - rabbitmq-server

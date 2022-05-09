@@ -1,6 +1,5 @@
 fastapi==0.75.2
 uvicorn==0.17.6
 sqlalchemy==1.4.36
-databases
 aiosqlite==0.17.0
 celery==5.2.6
