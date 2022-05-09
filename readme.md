@@ -5,7 +5,7 @@ clone this repository and run `docker-compose up`
 This will start a fastapi application, a RabbitMQ server and a Celery worker, with a sqlite database. 
 Open the fastapi openapi Swagger UI - specification which works as our client in this project. - 
 
-127.0.0.1:8000/docs
+http://127.0.0.1:8000/docs
 
 
 ## Validation checks -
